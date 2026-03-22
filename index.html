@@ -2,14 +2,18 @@
 <html>
   <head>
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+
+    <!-- physics -->
+    <script src="https://cdn.jsdelivr.net/npm/aframe-physics-system@4.0.1/dist/aframe-physics-system.min.js"></script>
+
+    <!-- super hands -->
     <script src="https://unpkg.com/aframe-super-hands-component@4.0.2/dist/aframe-super-hands-component.min.js"></script>
 
     <script>
-      // POHYB (stabilní "tělo")
+      // POHYB: levý joystick = pohyb, pravý = rotace
       AFRAME.registerComponent("vr-movement", {
         tick: function () {
           const rig = document.querySelector("#rig");
-          const camera = document.querySelector("#camera");
 
           const session = this.el.sceneEl.xrSession;
           if (!session) return;
@@ -19,12 +23,12 @@
 
             const axes = input.gamepad.axes;
 
-            // levý joystick = pohyb dopředu/do stran
+            // LEVÝ joystick → pohyb (forward / strafe)
             if (axes.length >= 2) {
               const x = axes[2] || 0;
               const y = axes[3] || 0;
 
-              const speed = 0.04;
+              const speed = 0.05;
 
               const rotationY = rig.object3D.rotation.y;
 
@@ -37,7 +41,7 @@
               rig.object3D.position.z += Math.sin(rotationY) * x * speed;
             }
 
-            // pravý joystick = otáčení těla
+            // PRAVÝ joystick → otáčení
             if (axes.length >= 4) {
               const rx = axes[2] || 0;
               rig.object3D.rotation.y -= rx * 0.03;
@@ -45,86 +49,63 @@
           });
         },
       });
-
-      // STŘELBA
-      AFRAME.registerComponent("gun", {
-        init: function () {
-          this.el.addEventListener("triggerdown", () => {
-            const scene = document.querySelector("a-scene");
-
-            let bullet = document.createElement("a-sphere");
-            bullet.setAttribute("radius", "0.03");
-            bullet.setAttribute("color", "yellow");
-
-            let pos = this.el.object3D.getWorldPosition(new THREE.Vector3());
-            bullet.setAttribute("position", pos);
-
-            let dir = new THREE.Vector3();
-            this.el.object3D.getWorldDirection(dir);
-            dir.multiplyScalar(-10);
-
-            bullet.setAttribute("velocity", dir);
-            bullet.setAttribute("dynamic-body", "mass: 0.1");
-
-            scene.appendChild(bullet);
-
-            setTimeout(() => bullet.remove(), 3000);
-          });
-        },
-      });
-
-      // TARGET HIT
-      AFRAME.registerComponent("target", {
-        init: function () {
-          this.el.addEventListener("collide", () => {
-            this.el.remove();
-          });
-        },
-      });
     </script>
   </head>
 
   <body>
-    <a-scene vr-movement>
+    <a-scene vr-movement physics="gravity: -9.8">
 
-      <!-- TĚLO (rig) -->
-      <a-entity id="rig" position="0 0 0">
+      <!-- PLAYER RIG -->
+      <a-entity id="rig">
 
-        <!-- HLAVA (kamera) -->
-        <a-entity id="camera" camera position="0 1.6 0"></a-entity>
+        <!-- HLAVA -->
+        <a-entity camera position="0 1.6 0"></a-entity>
 
-        <!-- RUCE připojené k tělu -->
-        <a-entity hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
+        <!-- RUCE -->
+        <a-entity
+          hand-controls="hand: left"
+          super-hands="colliderEvent: collisions; grabStartButtons: triggerdown; grabEndButtons: triggerup"
+        ></a-entity>
 
         <a-entity
-          hand-controls="hand: right; handModelStyle: lowPoly"
-          id="rightHand"
+          hand-controls="hand: right"
+          super-hands="colliderEvent: collisions; grabStartButtons: triggerdown; grabEndButtons: triggerup"
         ></a-entity>
 
       </a-entity>
 
-      <!-- zem -->
+      <!-- ZEM -->
       <a-plane rotation="-90 0 0" width="50" height="50" color="green"></a-plane>
 
-      <!-- LEPŠÍ ZBRAŇ (vizuálně víc jako pistole) -->
+      <!-- ZBRAŇ -->
       <a-entity
-        position="0 1.2 -0.3"
         class="grabbable"
-        gun
+        grabbable
+        dynamic-body="mass: 1"
+        position="0 1.2 -1"
       >
-
-        <!-- rukojeť -->
         <a-box depth="0.1" height="0.2" width="0.05" color="black"></a-box>
-
-        <!-- hlaveň -->
         <a-box position="0 0.05 -0.2" depth="0.3" height="0.05" width="0.05" color="gray"></a-box>
-
       </a-entity>
 
-      <!-- TARGETY -->
-      <a-sphere position="0 1 -4" radius="0.3" color="blue" target></a-sphere>
-      <a-sphere position="2 1 -5" radius="0.3" color="blue" target></a-sphere>
-      <a-sphere position="-2 1 -5" radius="0.3" color="blue" target></a-sphere>
+      <!-- TARGETY (také grabbable pro test) -->
+      <a-sphere
+        class="grabbable"
+        grabbable
+        dynamic-body="mass: 1"
+        position="0 1 -4"
+        radius="0.3"
+        color="blue"
+      ></a-sphere>
+
+      <a-sphere
+        class="grabbable"
+        grabbable
+        dynamic-body="mass: 1"
+        position="2 1 -5"
+        radius="0.3"
+        color="blue"
+      ></a-sphere>
 
     </a-scene>
   </body>
