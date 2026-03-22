@@ -2,33 +2,72 @@
 <html>
   <head>
     <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-
-    <!-- komponenta pro grab -->
     <script src="https://unpkg.com/aframe-super-hands-component@4.0.2/dist/aframe-super-hands-component.min.js"></script>
+
+    <script>
+      // STŘELBA
+      AFRAME.registerComponent("gun", {
+        init: function () {
+          this.el.addEventListener("triggerdown", () => {
+            const scene = document.querySelector("a-scene");
+
+            let bullet = document.createElement("a-sphere");
+            bullet.setAttribute("radius", "0.05");
+            bullet.setAttribute("color", "yellow");
+
+            // pozice zbraně
+            let pos = this.el.object3D.getWorldPosition(new THREE.Vector3());
+            bullet.setAttribute("position", pos);
+
+            // směr střely
+            let dir = new THREE.Vector3();
+            this.el.object3D.getWorldDirection(dir);
+            dir.multiplyScalar(-10);
+
+            bullet.setAttribute("velocity", dir);
+
+            // pohyb střely
+            bullet.setAttribute("dynamic-body", "mass: 0.1");
+
+            scene.appendChild(bullet);
+
+            // odstranění po čase
+            setTimeout(() => bullet.remove(), 3000);
+          });
+        },
+      });
+
+      // ZASAŽENÍ TARGETU
+      AFRAME.registerComponent("target", {
+        init: function () {
+          this.el.addEventListener("collide", () => {
+            this.el.setAttribute("color", "red");
+            setTimeout(() => this.el.remove(), 200);
+          });
+        },
+      });
+    </script>
   </head>
 
   <body>
-    <a-scene>
+    <a-scene physics="debug: false">
 
       <!-- kamera -->
       <a-entity camera position="0 1.6 0"></a-entity>
 
-      <!-- LEVÁ RUKA -->
-      <a-entity
-        hand-controls="hand: left"
-        super-hands
-      ></a-entity>
+      <!-- ruce -->
+      <a-entity hand-controls="hand: left" super-hands></a-entity>
 
-      <!-- PRAVÁ RUKA -->
       <a-entity
+        id="rightHand"
         hand-controls="hand: right"
         super-hands
       ></a-entity>
 
       <!-- zem -->
-      <a-plane rotation="-90 0 0" width="10" height="10" color="green"></a-plane>
+      <a-plane rotation="-90 0 0" width="20" height="20" color="green"></a-plane>
 
-      <!-- "zbraň" (jednoduchý model) -->
+      <!-- ZBRAŇ -->
       <a-box
         position="0 1 -2"
         depth="0.5"
@@ -36,7 +75,13 @@
         width="1"
         color="black"
         class="grabbable"
+        gun
       ></a-box>
+
+      <!-- TARGETY -->
+      <a-sphere position="0 1 -5" radius="0.5" color="blue" target></a-sphere>
+      <a-sphere position="2 1 -6" radius="0.5" color="blue" target></a-sphere>
+      <a-sphere position="-2 1 -4" radius="0.5" color="blue" target></a-sphere>
 
     </a-scene>
   </body>
