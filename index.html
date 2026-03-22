@@ -1,112 +1,185 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8" />
+  <title>VR FPS Hra</title>
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      background: rgba(0,0,0,0.5);
+      padding: 10px;
+      font-family: Arial, sans-serif;
+    }
+  </style>
+</head>
+<body>
+<div id="info">VR: P joystick = pohyb, L joystick = otáčení, Grip = uchopení</div>
 
-    <!-- physics -->
-    <script src="https://cdn.jsdelivr.net/npm/aframe-physics-system@4.0.1/dist/aframe-physics-system.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128/examples/js/webxr/VRButton.js"></script>
 
-    <!-- super hands -->
-    <script src="https://unpkg.com/aframe-super-hands-component@4.0.2/dist/aframe-super-hands-component.min.js"></script>
+<script>
+let scene, camera, renderer;
+let controller1, controller2;
+let grabbed = new Map();
+let moveSpeed = 0.05;
+let tempMatrix = new THREE.Matrix4();
 
-    <script>
-      // POHYB: levý joystick = pohyb, pravý = rotace
-      AFRAME.registerComponent("vr-movement", {
-        tick: function () {
-          const rig = document.querySelector("#rig");
+init();
+animate();
 
-          const session = this.el.sceneEl.xrSession;
-          if (!session) return;
+function init() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x202025);
 
-          session.inputSources.forEach((input) => {
-            if (!input.gamepad) return;
+  camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.1, 1000);
+  camera.position.set(0, 1.6, 0);
 
-            const axes = input.gamepad.axes;
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.xr.enabled = true;
+  document.body.appendChild(renderer.domElement);
+  document.body.appendChild(VRButton.createButton(renderer));
 
-            // LEVÝ joystick → pohyb (forward / strafe)
-            if (axes.length >= 2) {
-              const x = axes[2] || 0;
-              const y = axes[3] || 0;
+  const light = new THREE.DirectionalLight(0xffffff, 1);
+  light.position.set(5, 10, 7);
+  scene.add(light);
 
-              const speed = 0.05;
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(50, 50),
+    new THREE.MeshStandardMaterial({ color: 0x444444 })
+  );
+  floor.rotation.x = -Math.PI / 2;
+  scene.add(floor);
 
-              const rotationY = rig.object3D.rotation.y;
+  // malé kostky s "fyzikou" (simulovanou)
+  for (let i = 0; i < 10; i++) {
+    const cube = new THREE.Mesh(
+      new THREE.BoxGeometry(0.2, 0.2, 0.2),
+      new THREE.MeshStandardMaterial({ color: 0x00ffcc })
+    );
+    cube.position.set((Math.random()-0.5)*10, 0.5, (Math.random()-0.5)*10);
+    cube.userData.velocity = new THREE.Vector3(0,0,0);
+    scene.add(cube);
+  }
 
-              // forward/back
-              rig.object3D.position.x -= Math.sin(rotationY) * y * speed;
-              rig.object3D.position.z -= Math.cos(rotationY) * y * speed;
+  // controllers
+  controller1 = renderer.xr.getController(0);
+  controller2 = renderer.xr.getController(1);
+  scene.add(controller1);
+  scene.add(controller2);
 
-              // strafe
-              rig.object3D.position.x -= Math.cos(rotationY) * x * speed;
-              rig.object3D.position.z += Math.sin(rotationY) * x * speed;
-            }
+  setupController(controller1);
+  setupController(controller2);
 
-            // PRAVÝ joystick → otáčení
-            if (axes.length >= 4) {
-              const rx = axes[2] || 0;
-              rig.object3D.rotation.y -= rx * 0.03;
-            }
-          });
-        },
-      });
-    </script>
-  </head>
+  window.addEventListener('resize', onWindowResize);
+}
 
-  <body>
-    <a-scene vr-movement physics="gravity: -9.8">
+function setupController(controller) {
+  controller.addEventListener('selectstart', () => {});
+  controller.addEventListener('selectend', () => {});
 
-      <!-- PLAYER RIG -->
-      <a-entity id="rig">
+  controller.addEventListener('connected', (event) => {
+    const data = event.data;
+    controller.gamepad = data.gamepad;
+  });
 
-        <!-- HLAVA -->
-        <a-entity camera position="0 1.6 0"></a-entity>
+  controller.addEventListener('disconnected', () => {
+    delete controller.gamepad;
+  });
 
-        <!-- RUCE -->
-        <a-entity
-          hand-controls="hand: left"
-          super-hands="colliderEvent: collisions; grabStartButtons: triggerdown; grabEndButtons: triggerup"
-        ></a-entity>
+  controller.userData.grabbing = null;
 
-        <a-entity
-          hand-controls="hand: right"
-          super-hands="colliderEvent: collisions; grabStartButtons: triggerdown; grabEndButtons: triggerup"
-        ></a-entity>
+  controller.addEventListener('selectstart', () => grabObject(controller));
+  controller.addEventListener('selectend', () => releaseObject(controller));
+}
 
-      </a-entity>
+function grabObject(controller) {
+  const origin = controller.position.clone();
+  let closest = null;
+  let minDist = 0.5;
 
-      <!-- ZEM -->
-      <a-plane rotation="-90 0 0" width="50" height="50" color="green"></a-plane>
+  scene.traverse((obj) => {
+    if (obj.isMesh && obj.geometry.type === "BoxGeometry" && obj.geometry.parameters.width < 1) {
+      const dist = obj.position.distanceTo(origin);
+      if (dist < minDist) {
+        closest = obj;
+        minDist = dist;
+      }
+    }
+  });
 
-      <!-- ZBRAŇ -->
-      <a-entity
-        class="grabbable"
-        grabbable
-        dynamic-body="mass: 1"
-        position="0 1.2 -1"
-      >
-        <a-box depth="0.1" height="0.2" width="0.05" color="black"></a-box>
-        <a-box position="0 0.05 -0.2" depth="0.3" height="0.05" width="0.05" color="gray"></a-box>
-      </a-entity>
+  if (closest) {
+    controller.attach(closest);
+    controller.userData.grabbing = closest;
+  }
+}
 
-      <!-- TARGETY (také grabbable pro test) -->
-      <a-sphere
-        class="grabbable"
-        grabbable
-        dynamic-body="mass: 1"
-        position="0 1 -4"
-        radius="0.3"
-        color="blue"
-      ></a-sphere>
+function releaseObject(controller) {
+  if (controller.userData.grabbing) {
+    const obj = controller.userData.grabbing;
+    scene.attach(obj);
+    controller.userData.grabbing = null;
+  }
+}
 
-      <a-sphere
-        class="grabbable"
-        grabbable
-        dynamic-body="mass: 1"
-        position="2 1 -5"
-        radius="0.3"
-        color="blue"
-      ></a-sphere>
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
 
-    </a-scene>
-  </body>
-</html>
+function handleMovement() {
+  const session = renderer.xr.getSession();
+  if (!session) return;
+
+  const inputSources = session.inputSources;
+
+  inputSources.forEach((source) => {
+    if (!source.gamepad) return;
+
+    const axes = source.gamepad.axes;
+    const x = axes[2] || 0;
+    const y = axes[3] || 0;
+
+    // L joystick = rotace
+    camera.rotation.y -= x * 0.05;
+
+    // P joystick = pohyb
+    const forward = new THREE.Vector3(0, 0, -1).applyEuler(camera.rotation);
+    const right = new THREE.Vector3(1, 0, 0).applyEuler(camera.rotation);
+
+    camera.position.addScaledVector(forward, -y * moveSpeed);
+    camera.position.addScaledVector(right, x * moveSpeed);
+  });
+}
+
+function animate() {
+  renderer.setAnimationLoop(render);
+}
+
+function render() {
+  handleMovement();
+
+  // jednoduchá "fyzika" kostek
+  scene.traverse((obj) => {
+    if (obj.isMesh && obj.userData.velocity) {
+      obj.userData.velocity.y -= 0.001;
+      obj.position.add(obj.userData.velocity);
+
+      if (obj.position.y < 0.1) {
+        obj.position.y = 0.1;
+        obj.userData.velocity.y = 0;
+      }
+    }
+  });
+
+  renderer.render(scene, camera);
+}
+</script>
+</body>
+</html
