@@ -5,40 +5,39 @@
     <script src="https://unpkg.com/aframe-super-hands-component@4.0.2/dist/aframe-super-hands-component.min.js"></script>
 
     <script>
-      // POHYB - joystick chůze + otáčení
+      // POHYB (stabilní "tělo")
       AFRAME.registerComponent("vr-movement", {
         tick: function () {
-          const camera = document.querySelector("[camera]");
           const rig = document.querySelector("#rig");
+          const camera = document.querySelector("#camera");
 
           const session = this.el.sceneEl.xrSession;
           if (!session) return;
 
-          const inputSources = session.inputSources;
-
-          inputSources.forEach((input) => {
+          session.inputSources.forEach((input) => {
             if (!input.gamepad) return;
 
             const axes = input.gamepad.axes;
 
-            // levý joystick = chůze (forward/back + strafe)
+            // levý joystick = pohyb dopředu/do stran
             if (axes.length >= 2) {
               const x = axes[2] || 0;
               const y = axes[3] || 0;
 
-              const speed = 0.05;
+              const speed = 0.04;
 
-              // pohyb relativně ke směru kamery
-              const rotation = camera.object3D.rotation.y;
+              const rotationY = rig.object3D.rotation.y;
 
-              rig.object3D.position.x -= Math.sin(rotation) * y * speed;
-              rig.object3D.position.z -= Math.cos(rotation) * y * speed;
+              // forward/back
+              rig.object3D.position.x -= Math.sin(rotationY) * y * speed;
+              rig.object3D.position.z -= Math.cos(rotationY) * y * speed;
 
-              rig.object3D.position.x -= Math.cos(rotation) * x * speed;
-              rig.object3D.position.z += Math.sin(rotation) * x * speed;
+              // strafe
+              rig.object3D.position.x -= Math.cos(rotationY) * x * speed;
+              rig.object3D.position.z += Math.sin(rotationY) * x * speed;
             }
 
-            // pravý joystick = otáčení
+            // pravý joystick = otáčení těla
             if (axes.length >= 4) {
               const rx = axes[2] || 0;
               rig.object3D.rotation.y -= rx * 0.03;
@@ -88,32 +87,39 @@
   <body>
     <a-scene vr-movement>
 
-      <!-- RIG (kamera + pohyb) -->
+      <!-- TĚLO (rig) -->
       <a-entity id="rig" position="0 0 0">
-        <a-entity camera position="0 1.6 0"></a-entity>
+
+        <!-- HLAVA (kamera) -->
+        <a-entity id="camera" camera position="0 1.6 0"></a-entity>
+
+        <!-- RUCE připojené k tělu -->
+        <a-entity hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
+
+        <a-entity
+          hand-controls="hand: right; handModelStyle: lowPoly"
+          id="rightHand"
+        ></a-entity>
+
       </a-entity>
-
-      <!-- RUCE (upravené pozice) -->
-      <a-entity hand-controls="hand: left; handModelStyle: lowPoly"></a-entity>
-
-      <a-entity
-        hand-controls="hand: right; handModelStyle: lowPoly"
-        id="rightHand"
-      ></a-entity>
 
       <!-- zem -->
       <a-plane rotation="-90 0 0" width="50" height="50" color="green"></a-plane>
 
-      <!-- MENŠÍ ZBRAŇ -->
-      <a-box
-        position="0 1.2 -0.5"
-        depth="0.2"
-        height="0.1"
-        width="0.4"
-        color="black"
+      <!-- LEPŠÍ ZBRAŇ (vizuálně víc jako pistole) -->
+      <a-entity
+        position="0 1.2 -0.3"
         class="grabbable"
         gun
-      ></a-box>
+      >
+
+        <!-- rukojeť -->
+        <a-box depth="0.1" height="0.2" width="0.05" color="black"></a-box>
+
+        <!-- hlaveň -->
+        <a-box position="0 0.05 -0.2" depth="0.3" height="0.05" width="0.05" color="gray"></a-box>
+
+      </a-entity>
 
       <!-- TARGETY -->
       <a-sphere position="0 1 -4" radius="0.3" color="blue" target></a-sphere>
